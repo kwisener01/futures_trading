@@ -81,8 +81,18 @@ if st.button("Start Trading Bot"):
     # --- Fetch Data from yfinance ---
     df = yf.download(tickers=symbol, interval="1m", period=period)
 
-    # --- Apply Bayesian Forecast ---
+    # --- Apply Bayesian Forecast (Supertrend, Posterior) ---
     df = calculate_bayesian_forecast(df)
+
+    # --- Calculate VWAP separately ---
+    df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+
+    # --- EMA Calculation ---
+    df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+
+    # --- Continue as normal...
+
 
     # --- EMA Calculation ---
     df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
