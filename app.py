@@ -54,7 +54,9 @@ period = st.sidebar.selectbox("Period", options=['5d', '7d', '30d', '90d', '180d
 sensitivity = st.sidebar.select_slider("Sensitivity", options=['aggressive', 'normal', 'conservative'], value='normal')
 live_simulation = st.sidebar.checkbox("Live Simulation Mode", value=False)
 use_alphavantage = st.sidebar.checkbox("Use AlphaVantage Feed", value=False)
-api_key = st.sidebar.text_input("AlphaVantage API Key", value="")
+
+# Use secret for API key
+api_key = st.secrets.get("api_keys", {}).get("alphavantage", "")
 
 # --- Main ---
 st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
@@ -77,8 +79,12 @@ if st.button("Start Trading Bot"):
         df = df.astype(float)
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()
+        if df.index.tz is None:
+            df.index = df.index.tz_localize('UTC')
     else:
         df = yf.download(tickers=symbol, interval="1m", period=period)
+        if df.index.tz is None:
+            df.index = df.index.tz_localize('UTC')
 
     df = df.tz_convert('US/Eastern')
 
