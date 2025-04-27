@@ -63,7 +63,8 @@ def calculate_bayesian_forecast(df, sensitivity_mode):
 
     min_lb = 10
     max_lb = 60
-    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb).astype(int)
+    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb)
+    dyn_lb = dyn_lb.fillna(min_lb).round().astype(int)
 
     df['Mean'] = df['Close'].rolling(window=dyn_lb, min_periods=1).mean()
     df['Std'] = df['Close'].rolling(window=dyn_lb, min_periods=1).std()
