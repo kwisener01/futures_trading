@@ -169,25 +169,27 @@ with placeholder.container():
             entry_price = df['Close'].iloc[i]
             sl = entry_price - df['ATR'].iloc[i]
             tp = entry_price + df['ATR'].iloc[i] * 1.5
-            trade_log.append((df.index[i], 'BUY', entry_price))
+            trade_log.append((df.index[i], 'BUY', entry_price, np.nan, np.nan, np.nan))
         elif df['Final_Signal'].iloc[i] == -1 and position == 0:
             position = -trade_size
             entry_price = df['Close'].iloc[i]
             sl = entry_price + df['ATR'].iloc[i]
             tp = entry_price - df['ATR'].iloc[i] * 1.5
-            trade_log.append((df.index[i], 'SELL', entry_price))
+            trade_log.append((df.index[i], 'SELL', entry_price, np.nan, np.nan, np.nan))
 
         if position > 0 and (df['Close'].iloc[i] < sl or df['Close'].iloc[i] > tp or i == len(df)-1):
             pnl = (df['Close'].iloc[i] - entry_price) * abs(position)
             balance += pnl
             profits.append(pnl)
             position = 0
+            trade_log[-1] = (trade_log[-1][0], trade_log[-1][1], trade_log[-1][2], df['Close'].iloc[i], pnl, 'TP' if df['Close'].iloc[i] > entry_price else 'SL')
 
         if position < 0 and (df['Close'].iloc[i] > sl or df['Close'].iloc[i] < tp or i == len(df)-1):
             pnl = (entry_price - df['Close'].iloc[i]) * abs(position)
             balance += pnl
             profits.append(pnl)
             position = 0
+            trade_log[-1] = (trade_log[-1][0], trade_log[-1][1], trade_log[-1][2], df['Close'].iloc[i], pnl, 'TP' if df['Close'].iloc[i] < entry_price else 'SL')
 
     st.metric("Final Balance", f"${balance:.2f}")
     st.metric("Total Profit", f"${(balance - starting_balance):.2f}")
@@ -199,7 +201,7 @@ with placeholder.container():
 
     st.dataframe(df[['Close', 'EMA_20', 'VWAP', 'ATR', 'Supertrend', 'Posterior_Up', 'Posterior_Down', 'Signal', 'ML_Prediction', 'Final_Signal']].tail(50))
 
-    trade_log_df = pd.DataFrame(trade_log, columns=['Time', 'Action', 'Price'])
+    trade_log_df = pd.DataFrame(trade_log, columns=['Time', 'Action', 'Entry_Price', 'Exit_Price', 'PnL', 'Exit_Reason'])
     st.dataframe(trade_log_df)
 
     st.success("Trading Simulation Updated!")
