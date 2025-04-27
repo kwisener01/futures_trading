@@ -13,7 +13,6 @@ st.write("Live 1-min trading decisions based on VWAP + Supertrend + Bayesian For
 # --- Parameters ---
 symbol = st.text_input("Enter Symbol (default SPY):", value="SPY")
 period = st.selectbox("Select period:", ["1d", "5d"], index=0)
-api_key = st.text_input("Optional: AlphaVantage API Key (for backup)", value="")
 
 # --- Functions ---
 def calculate_bayesian_forecast(df):
@@ -24,9 +23,6 @@ def calculate_bayesian_forecast(df):
     df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
     df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
     df['ATR'] = df['TR'].rolling(atr_length).mean()
-
-  #  df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
-  #  df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
 
     hl2 = (df['High'] + df['Low']) / 2
     df['UpperBand'] = hl2 + (multiplier * df['ATR'])
@@ -81,17 +77,15 @@ if st.button("Start Trading Bot"):
     # --- Fetch Data from yfinance ---
     df = yf.download(tickers=symbol, interval="1m", period=period)
 
-    # --- Apply Bayesian Forecast (Supertrend, Posterior) ---
+    # --- Apply Bayesian Forecast ---
     df = calculate_bayesian_forecast(df)
 
-    # --- Calculate VWAP separately ---
+    # --- VWAP Calculation ---
     df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
     df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
 
     # --- EMA Calculation ---
     df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
-
-   
 
     # --- Trading Signal Rules ---
     df['Signal'] = 0
