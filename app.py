@@ -6,6 +6,7 @@ from scipy.stats import norm
 from sklearn.ensemble import RandomForestClassifier
 from streamlit_autorefresh import st_autorefresh
 import datetime
+import pytz
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="SPY Proxy MES Futures Trading Bot", layout="wide")
@@ -124,6 +125,9 @@ with placeholder.container():
         if 'Volume' in col: rename_map[col] = 'Volume'
     df.rename(columns=rename_map, inplace=True)
 
+    eastern = pytz.timezone('US/Eastern')
+    df.index = df.index.tz_convert(eastern)
+
     df = calculate_bayesian_forecast(df, sensitivity)
 
     df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
@@ -204,6 +208,7 @@ with placeholder.container():
     st.dataframe(df[['Close', 'EMA_20', 'VWAP', 'ATR', 'Supertrend', 'Posterior_Up', 'Posterior_Down', 'Signal', 'ML_Prediction', 'Final_Signal']].tail(50))
 
     trade_log_df = pd.DataFrame(trade_log, columns=['Time', 'Action', 'Entry_Price', 'Exit_Price', 'PnL', 'Exit_Reason'])
+    trade_log_df['Time'] = trade_log_df['Time'].dt.tz_convert(eastern)
     st.dataframe(trade_log_df)
 
     st.success("Trading Simulation Updated!")
