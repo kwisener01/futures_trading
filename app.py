@@ -63,11 +63,22 @@ def calculate_bayesian_forecast(df, sensitivity_mode):
 
     min_lb = 10
     max_lb = 60
-    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb)
-    dyn_lb = dyn_lb.fillna(min_lb).round().astype(int)
+    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb).fillna(min_lb).round().astype(int)
 
-    df['Mean'] = df['Close'].rolling(window=dyn_lb, min_periods=1).mean()
-    df['Std'] = df['Close'].rolling(window=dyn_lb, min_periods=1).std()
+    mean_list = []
+    std_list = []
+    for i in range(len(df)):
+        lb = dyn_lb.iloc[i]
+        if i < lb:
+            window = df['Close'].iloc[:i+1]
+        else:
+            window = df['Close'].iloc[i-lb+1:i+1]
+        mean_list.append(window.mean())
+        std_list.append(window.std())
+
+    df['Mean'] = mean_list
+    df['Std'] = std_list
+
     df['ZScore'] = (df['Close'] - df['Mean']) / df['Std']
 
     df['Prob_Up'] = norm.cdf(df['ZScore'])
