@@ -5,6 +5,7 @@ import yfinance as yf
 from scipy.stats import norm
 from sklearn.ensemble import RandomForestClassifier
 from streamlit_autorefresh import st_autorefresh
+import datetime
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="SPY Proxy MES Futures Trading Bot", layout="wide")
@@ -132,7 +133,6 @@ with placeholder.container():
     df.loc[(df['Sell_Signal']) & (df['Close'] < df['VWAP']) & (df['Close'] < df['EMA_20']), 'Signal'] = -1
 
     df = df.between_time('09:30', '16:00')
-
     df.dropna(inplace=True)
 
     features = ['Close', 'EMA_20', 'VWAP', 'ATR', 'ZScore']
@@ -169,12 +169,14 @@ with placeholder.container():
             entry_price = df['Close'].iloc[i]
             sl = entry_price - df['ATR'].iloc[i]
             tp = entry_price + df['ATR'].iloc[i] * 1.5
+            st.toast(f"New BUY at {entry_price:.2f}", icon="🟢")
             trade_log.append((df.index[i], 'BUY', entry_price, np.nan, np.nan, np.nan))
         elif df['Final_Signal'].iloc[i] == -1 and position == 0:
             position = -trade_size
             entry_price = df['Close'].iloc[i]
             sl = entry_price + df['ATR'].iloc[i]
             tp = entry_price - df['ATR'].iloc[i] * 1.5
+            st.toast(f"New SELL at {entry_price:.2f}", icon="🔴")
             trade_log.append((df.index[i], 'SELL', entry_price, np.nan, np.nan, np.nan))
 
         if position > 0 and (df['Close'].iloc[i] < sl or df['Close'].iloc[i] > tp or i == len(df)-1):
