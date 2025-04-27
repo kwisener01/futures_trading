@@ -115,7 +115,7 @@ if st.button("Start Trading Bot"):
                 'TP_Price': row['Close'] * 1.002,
                 'SL_Price': row['Close'] * 0.998
             }
-            st.toast(f"📈 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
+            st.success(f"📈 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
 
         # Manage Open Trade
         if open_trade:
@@ -134,7 +134,7 @@ if st.button("Start Trading Bot"):
                     'PnL': pnl,
                     'Exit_Reason': 'TP'
                 })
-                st.toast(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
+                st.warning(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
                 open_trade = None
             # Check SL
             elif row['Low'] <= open_trade['SL_Price']:
@@ -151,7 +151,7 @@ if st.button("Start Trading Bot"):
                     'PnL': pnl,
                     'Exit_Reason': 'SL'
                 })
-                st.toast(f"🚨 SL Hit! Trade closed at {row.name} {open_trade['SL_Price']:.2f}")
+                st.error(f"🚨 SL Hit! Trade closed at {row.name} {open_trade['SL_Price']:.2f}")
                 open_trade = None
 
     # Results
