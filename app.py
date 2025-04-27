@@ -90,6 +90,16 @@ while True:
         # --- Clean spaces or symbols in columns ---
         df.columns = df.columns.str.replace(' ', '_').str.replace('__', '_')
 
+        # --- Force standard column names ---
+        rename_map = {}
+        for col in df.columns:
+            if 'Open' in col: rename_map[col] = 'Open'
+            if 'High' in col: rename_map[col] = 'High'
+            if 'Low' in col: rename_map[col] = 'Low'
+            if 'Close' in col and 'Adj' not in col: rename_map[col] = 'Close'
+            if 'Volume' in col: rename_map[col] = 'Volume'
+        df.rename(columns=rename_map, inplace=True)
+
         # --- Apply Bayesian Forecast ---
         df = calculate_bayesian_forecast(df)
 
