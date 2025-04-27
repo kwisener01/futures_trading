@@ -28,8 +28,8 @@ def calculate_bayesian_forecast(df):
     df['ATR'] = df['TR'].rolling(atr_length).mean()
 
     hl2 = (df['High'] + df['Low']) / 2
-    df['UpperBand'] = hl2.add(multiplier * df['ATR'])
-    df['LowerBand'] = hl2.subtract(multiplier * df['ATR'])
+    df['UpperBand'] = hl2 + (multiplier * df['ATR'])
+    df['LowerBand'] = hl2 - (multiplier * df['ATR'])
     df['Supertrend'] = 0
     df['Direction'] = 0
 
