@@ -25,8 +25,8 @@ def calculate_bayesian_forecast(df):
     df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
     df['ATR'] = df['TR'].rolling(atr_length).mean()
 
-    df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
-    df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+  #  df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
+  #  df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
 
     hl2 = (df['High'] + df['Low']) / 2
     df['UpperBand'] = hl2 + (multiplier * df['ATR'])
