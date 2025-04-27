@@ -28,8 +28,8 @@ def calculate_bayesian_forecast(df):
     df['ATR'] = df['TR'].rolling(atr_length).mean()
 
     hl2 = (df['High'] + df['Low']) / 2
-    df['UpperBand'] = hl2 + (multiplier * df['ATR'])
-    df['LowerBand'] = hl2 - (multiplier * df['ATR'])
+    df['UpperBand'] = (hl2 + (multiplier * df['ATR'])).astype(float)
+    df['LowerBand'] = (hl2 - (multiplier * df['ATR'])).astype(float)
     df['Supertrend'] = 0
     df['Direction'] = 0
 
@@ -82,6 +82,10 @@ while True:
     with placeholder.container():
         # --- Fetch Data from yfinance ---
         df = yf.download(tickers=symbol, interval="1m", period=period)
+
+        # --- Flatten columns if MultiIndex ---
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = ['_'.join(col).strip() for col in df.columns.values]
 
         # --- Apply Bayesian Forecast ---
         df = calculate_bayesian_forecast(df)
