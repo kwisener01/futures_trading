@@ -30,7 +30,7 @@ def calculate_bayesian_forecast(df):
     hl2 = (df['High'] + df['Low']) / 2
     df['UpperBand'] = hl2 + (multiplier * df['ATR'])
     df['LowerBand'] = hl2 - (multiplier * df['ATR'])
-    df['Supertrend'] = 0
+    df['Supertrend'] = 0.0
     df['Direction'] = 0
 
     for i in range(1, len(df)):
@@ -52,10 +52,10 @@ def calculate_bayesian_forecast(df):
     min_lb = 10
     max_lb = 60
     raw_lb = min_lb + (max_lb - min_lb) * (1 - vol_fact)
-    dyn_lb = np.clip(np.round(raw_lb), min_lb, max_lb).astype(int)
+    avg_dyn_lb = int(np.clip(raw_lb.mean(), min_lb, max_lb))
 
-    df['Mean'] = df['Close'].rolling(dyn_lb).mean()
-    df['Std'] = df['Close'].rolling(dyn_lb).std()
+    df['Mean'] = df['Close'].rolling(window=avg_dyn_lb).mean()
+    df['Std'] = df['Close'].rolling(window=avg_dyn_lb).std()
     df['ZScore'] = (df['Close'] - df['Mean']) / df['Std']
 
     df['Prob_Up'] = norm.cdf(df['ZScore'])
