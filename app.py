@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from datetime import datetime, timedelta
 import pytz
+import requests
+import os
 
 # --- Set page config ---
 st.set_page_config(page_title="Futures Trading Bot", layout="wide")
@@ -44,24 +46,59 @@ def calculate_bayesian_forecast(df, sensitivity):
 
     return df
 
+# --- Fetch Data ---
+def fetch_data(symbol, period, use_alpaca, use_polygon):
+    if use_alpaca:
+        api_key = st.secrets["ALPACA_API_KEY"]
+        api_secret = st.secrets["ALPACA_SECRET_KEY"]
+        base_url = "https://data.alpaca.markets/v2/stocks"
+        
+        headers = {
+            "APCA-API-KEY-ID": api_key,
+            "APCA-API-SECRET-KEY": api_secret
+        }
+
+        url = f"{base_url}/{symbol}/bars?timeframe=1Min&limit=1000"
+        r = requests.get(url, headers=headers)
+        data = r.json()
+
+        df = pd.DataFrame(data['bars'])
+        df['t'] = pd.to_datetime(df['t'])
+        df.set_index('t', inplace=True)
+        df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}, inplace=True)
+    elif use_polygon:
+        polygon_key = st.secrets["POLYGON_API_KEY"]
+        url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/minute/{(datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')}/{datetime.now().strftime('%Y-%m-%d')}?adjusted=true&sort=asc&limit=50000&apiKey={polygon_key}"
+        r = requests.get(url)
+        data = r.json()
+
+        df = pd.DataFrame(data['results'])
+        df['t'] = pd.to_datetime(df['t'], unit='ms')
+        df.set_index('t', inplace=True)
+        df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}, inplace=True)
+    else:
+        df = yf.download(tickers=symbol, interval="1m", period=period)
+
+    if df.index.tz is None:
+        df.index = df.index.tz_localize('UTC')
+    df = df.tz_convert('US/Eastern')
+    return df
+
 # --- Sidebar ---
 st.sidebar.header("Settings")
-symbol = st.sidebar.text_input("Symbol (e.g., MES=F)", value="MES=F")
+symbol = st.sidebar.text_input("Symbol (e.g., MES=F or SPY)", value="MES=F")
 period = st.sidebar.selectbox("Period", options=['5d', '7d', '30d', '90d', '180d'], index=0)
 sensitivity = st.sidebar.select_slider("Sensitivity", options=['aggressive', 'normal', 'conservative'], value='normal')
 live_simulation = st.sidebar.checkbox("Live Simulation Mode", value=False)
+use_alpaca = st.sidebar.checkbox("Use Alpaca Live Feed", value=False)
+use_polygon = st.sidebar.checkbox("Use Polygon Live Feed", value=False)
 
 # --- Main ---
 st.title("\U0001F9E0 Futures Trading Bot (Bayesian Forecast)")
 
 if st.button("Start Trading Bot"):
-    # Fetch Data
-    df = yf.download(tickers=symbol, interval="1m", period=period)
-    if df.index.tz is None:
-        df.index = df.index.tz_localize('UTC')
-    df = df.tz_convert('US/Eastern')
+    df = fetch_data(symbol, period, use_alpaca, use_polygon)
 
-    # Clean Columns
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = ['_'.join(col).strip() for col in df.columns.values]
     df.columns = df.columns.str.replace(' ', '_').str.replace('__', '_')
@@ -75,17 +112,12 @@ if st.button("Start Trading Bot"):
         if 'Volume' in col: rename_map[col] = 'Volume'
     df.rename(columns=rename_map, inplace=True)
 
-    # Apply Bayesian Forecast
     df = calculate_bayesian_forecast(df, sensitivity)
 
-    # VWAP Calculation
     df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
     df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
-
-    # EMA for Trend Filter
     df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
 
-    # Create ML Model
     df['Target'] = np.where(df['Close'].shift(-5) > df['Close'], 1, 0)
     X = df[['Close', 'EMA_20', 'Supertrend', 'VWAP', 'ATR']].fillna(0)
     y = df['Target']
@@ -97,7 +129,6 @@ if st.button("Start Trading Bot"):
     else:
         df['ML_Prediction'] = 0
 
-    # Trading Simulation
     balance = 10000
     open_trade = None
     trades = []
@@ -106,7 +137,6 @@ if st.button("Start Trading Bot"):
     for i in range(1, len(df)):
         row = df.iloc[i]
 
-        # Buy Signal
         if (row['ML_Prediction'] == 1) and (open_trade is None):
             open_trade = {
                 'Entry_Time': row.name,
@@ -117,9 +147,7 @@ if st.button("Start Trading Bot"):
             }
             signal_placeholder.success(f"\U0001F4C8 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
 
-        # Manage Open Trade
         if open_trade:
-            # Check TP
             if row['High'] >= open_trade['TP_Price']:
                 pnl = open_trade['TP_Price'] - open_trade['Entry_Price']
                 elapsed = row.name - open_trade['Entry_Time']
@@ -137,7 +165,6 @@ if st.button("Start Trading Bot"):
                 signal_placeholder.warning(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
                 signal_placeholder.empty()
                 open_trade = None
-            # Check SL
             elif row['Low'] <= open_trade['SL_Price']:
                 pnl = open_trade['SL_Price'] - open_trade['Entry_Price']
                 elapsed = row.name - open_trade['Entry_Time']
@@ -156,7 +183,6 @@ if st.button("Start Trading Bot"):
                 signal_placeholder.empty()
                 open_trade = None
 
-    # Results
     st.subheader("Results")
     st.write(f"**Final Balance:** ${balance:.2f}")
     st.write(f"**Total Profit:** ${balance - 10000:.2f}")
@@ -167,7 +193,6 @@ if st.button("Start Trading Bot"):
         trades_df['Elapsed'] = trades_df['Elapsed'].apply(lambda x: f"{x.components.minutes}m {x.components.seconds}s")
         st.dataframe(trades_df)
 
-    # Plot
     fig, ax = plt.subplots(figsize=(14,6))
     ax.plot(df['Close'], label='Close Price')
     ax.plot(df['EMA_20'], label='EMA 20')
