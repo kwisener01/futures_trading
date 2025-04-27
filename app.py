@@ -4,9 +4,7 @@ import numpy as np
 import yfinance as yf
 from scipy.stats import norm
 from sklearn.ensemble import RandomForestClassifier
-import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
-import time
+from streamlit_autorefresh import st_autorefresh
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="SPY Proxy MES Futures Trading Bot", layout="wide")
@@ -17,6 +15,9 @@ st.write("Live 1-min trading decisions based on VWAP + Supertrend + Bayesian For
 symbol = st.text_input("Enter Symbol (default SPY):", value="SPY")
 period = st.selectbox("Select period:", ["1d", "5d"], index=0)
 refresh_rate = st.slider("Auto-refresh rate (seconds):", 30, 300, 60)
+
+# --- Autorefresh every X seconds ---
+st_autorefresh(interval=refresh_rate*1000, key="data_refresh")
 
 # --- Functions ---
 def calculate_bayesian_forecast(df):
@@ -76,99 +77,95 @@ def calculate_bayesian_forecast(df):
 
     return df
 
-# --- Live Refresh Loop ---
+# --- Main Logic ---
 placeholder = st.empty()
 
-while True:
-    with placeholder.container():
-        df = yf.download(tickers=symbol, interval="1m", period=period)
+with placeholder.container():
+    df = yf.download(tickers=symbol, interval="1m", period=period)
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = ['_'.join(col).strip() for col in df.columns.values]
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = ['_'.join(col).strip() for col in df.columns.values]
 
-        df.columns = df.columns.str.replace(' ', '_').str.replace('__', '_')
+    df.columns = df.columns.str.replace(' ', '_').str.replace('__', '_')
 
-        rename_map = {}
-        for col in df.columns:
-            if 'Open' in col: rename_map[col] = 'Open'
-            if 'High' in col: rename_map[col] = 'High'
-            if 'Low' in col: rename_map[col] = 'Low'
-            if 'Close' in col and 'Adj' not in col: rename_map[col] = 'Close'
-            if 'Volume' in col: rename_map[col] = 'Volume'
-        df.rename(columns=rename_map, inplace=True)
+    rename_map = {}
+    for col in df.columns:
+        if 'Open' in col: rename_map[col] = 'Open'
+        if 'High' in col: rename_map[col] = 'High'
+        if 'Low' in col: rename_map[col] = 'Low'
+        if 'Close' in col and 'Adj' not in col: rename_map[col] = 'Close'
+        if 'Volume' in col: rename_map[col] = 'Volume'
+    df.rename(columns=rename_map, inplace=True)
 
-        df = calculate_bayesian_forecast(df)
+    df = calculate_bayesian_forecast(df)
 
-        df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
-        df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+    df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
 
-        df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
 
-        df['Signal'] = 0
-        df.loc[(df['Buy_Signal']) & (df['Close'] > df['VWAP']) & (df['Close'] > df['EMA_20']), 'Signal'] = 1
-        df.loc[(df['Sell_Signal']) & (df['Close'] < df['VWAP']) & (df['Close'] < df['EMA_20']), 'Signal'] = -1
+    df['Signal'] = 0
+    df.loc[(df['Buy_Signal']) & (df['Close'] > df['VWAP']) & (df['Close'] > df['EMA_20']), 'Signal'] = 1
+    df.loc[(df['Sell_Signal']) & (df['Close'] < df['VWAP']) & (df['Close'] < df['EMA_20']), 'Signal'] = -1
 
-        df = df.between_time('09:30', '16:00')
+    df = df.between_time('09:30', '16:00')
 
-        df.dropna(inplace=True)
+    df.dropna(inplace=True)
 
-        features = ['Close', 'EMA_20', 'VWAP', 'ATR', 'ZScore']
-        df['Future_Returns'] = df['Close'].shift(-5) - df['Close']
-        df['Target'] = np.where(df['Future_Returns'] > 0, 1, 0)
+    features = ['Close', 'EMA_20', 'VWAP', 'ATR', 'ZScore']
+    df['Future_Returns'] = df['Close'].shift(-5) - df['Close']
+    df['Target'] = np.where(df['Future_Returns'] > 0, 1, 0)
 
-        X = df[features]
-        y = df['Target']
+    X = df[features]
+    y = df['Target']
 
-        model = RandomForestClassifier()
-        model.fit(X[:-5], y[:-5])
+    model = RandomForestClassifier()
+    model.fit(X[:-5], y[:-5])
 
-        df['ML_Prediction'] = model.predict(X)
+    df['ML_Prediction'] = model.predict(X)
 
-        df['Final_Signal'] = df.apply(lambda row: row['Signal'] if (row['Signal']==1 and row['ML_Prediction']==1) or (row['Signal']==-1 and row['ML_Prediction']==0) else 0, axis=1)
+    df['Final_Signal'] = df.apply(lambda row: row['Signal'] if (row['Signal']==1 and row['ML_Prediction']==1) or (row['Signal']==-1 and row['ML_Prediction']==0) else 0, axis=1)
 
-        starting_balance = 10000
-        balance = starting_balance
-        position = 0
-        entry_price = 0
-        profits = []
-        trade_log = []
+    starting_balance = 10000
+    balance = starting_balance
+    position = 0
+    entry_price = 0
+    profits = []
+    trade_log = []
 
-        for i in range(1, len(df)):
-            if df['Final_Signal'].iloc[i] == 1 and position == 0:
-                position = 1
-                entry_price = df['Close'].iloc[i]
-                trade_log.append((df.index[i], 'BUY', entry_price))
-            elif df['Final_Signal'].iloc[i] == -1 and position == 0:
-                position = -1
-                entry_price = df['Close'].iloc[i]
-                trade_log.append((df.index[i], 'SELL', entry_price))
+    for i in range(1, len(df)):
+        if df['Final_Signal'].iloc[i] == 1 and position == 0:
+            position = 1
+            entry_price = df['Close'].iloc[i]
+            trade_log.append((df.index[i], 'BUY', entry_price))
+        elif df['Final_Signal'].iloc[i] == -1 and position == 0:
+            position = -1
+            entry_price = df['Close'].iloc[i]
+            trade_log.append((df.index[i], 'SELL', entry_price))
 
-            if position == 1 and (df['Close'].iloc[i] < df['VWAP'].iloc[i] or i == len(df)-1):
-                pnl = df['Close'].iloc[i] - entry_price
-                balance += pnl
-                profits.append(pnl)
-                position = 0
+        if position == 1 and (df['Close'].iloc[i] < df['VWAP'].iloc[i] or i == len(df)-1):
+            pnl = df['Close'].iloc[i] - entry_price
+            balance += pnl
+            profits.append(pnl)
+            position = 0
 
-            if position == -1 and (df['Close'].iloc[i] > df['VWAP'].iloc[i] or i == len(df)-1):
-                pnl = entry_price - df['Close'].iloc[i]
-                balance += pnl
-                profits.append(pnl)
-                position = 0
+        if position == -1 and (df['Close'].iloc[i] > df['VWAP'].iloc[i] or i == len(df)-1):
+            pnl = entry_price - df['Close'].iloc[i]
+            balance += pnl
+            profits.append(pnl)
+            position = 0
 
-        st.metric("Final Balance", f"${balance:.2f}")
-        st.metric("Total Profit", f"${(balance - starting_balance):.2f}")
-        st.metric("Number of Trades", len(profits))
+    st.metric("Final Balance", f"${balance:.2f}")
+    st.metric("Total Profit", f"${(balance - starting_balance):.2f}")
+    st.metric("Number of Trades", len(profits))
 
-        st.line_chart(df['Close'])
-        st.line_chart(df['VWAP'])
-        st.line_chart(df['EMA_20'])
+    st.line_chart(df['Close'])
+    st.line_chart(df['VWAP'])
+    st.line_chart(df['EMA_20'])
 
-        st.dataframe(df[['Close', 'EMA_20', 'VWAP', 'ATR', 'Supertrend', 'Posterior_Up', 'Posterior_Down', 'Signal', 'ML_Prediction', 'Final_Signal']].tail(50))
+    st.dataframe(df[['Close', 'EMA_20', 'VWAP', 'ATR', 'Supertrend', 'Posterior_Up', 'Posterior_Down', 'Signal', 'ML_Prediction', 'Final_Signal']].tail(50))
 
-        trade_log_df = pd.DataFrame(trade_log, columns=['Time', 'Action', 'Price'])
-        st.dataframe(trade_log_df)
+    trade_log_df = pd.DataFrame(trade_log, columns=['Time', 'Action', 'Price'])
+    st.dataframe(trade_log_df)
 
-        st.success("Trading Simulation Updated!")
-
-    time.sleep(refresh_rate)
-    st.experimental_rerun()
+    st.success("Trading Simulation Updated!")
