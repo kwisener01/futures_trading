@@ -63,10 +63,12 @@ def calculate_bayesian_forecast(df, sensitivity_mode):
 
     min_lb = 10
     max_lb = 60
-    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb).fillna(min_lb).round().astype(int)
+    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb)
 
     mean_list = []
     std_list = []
+    dyn_lb = dyn_lb.fillna(min_lb).round().astype(int)
+
     for i in range(len(df)):
         lb = dyn_lb.iloc[i]
         if i < lb:
