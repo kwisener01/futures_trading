@@ -4,8 +4,6 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
 from datetime import datetime, timedelta
 import pytz
 
@@ -54,7 +52,7 @@ sensitivity = st.sidebar.select_slider("Sensitivity", options=['aggressive', 'no
 live_simulation = st.sidebar.checkbox("Live Simulation Mode", value=False)
 
 # --- Main ---
-st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
+st.title("\U0001F9E0 Futures Trading Bot (Bayesian Forecast)")
 
 if st.button("Start Trading Bot"):
     # Fetch Data
@@ -103,6 +101,7 @@ if st.button("Start Trading Bot"):
     balance = 10000
     open_trade = None
     trades = []
+    signal_placeholder = st.empty()
 
     for i in range(1, len(df)):
         row = df.iloc[i]
@@ -116,7 +115,7 @@ if st.button("Start Trading Bot"):
                 'TP_Price': row['Close'] * 1.002,
                 'SL_Price': row['Close'] * 0.998
             }
-            st.success(f"📈 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
+            signal_placeholder.success(f"\U0001F4C8 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
 
         # Manage Open Trade
         if open_trade:
@@ -135,7 +134,8 @@ if st.button("Start Trading Bot"):
                     'PnL': pnl,
                     'Exit_Reason': 'TP'
                 })
-                st.warning(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
+                signal_placeholder.warning(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
+                signal_placeholder.empty()
                 open_trade = None
             # Check SL
             elif row['Low'] <= open_trade['SL_Price']:
@@ -152,7 +152,8 @@ if st.button("Start Trading Bot"):
                     'PnL': pnl,
                     'Exit_Reason': 'SL'
                 })
-                st.error(f"🚨 SL Hit! Trade closed at {row.name} {open_trade['SL_Price']:.2f}")
+                signal_placeholder.error(f"🚨 SL Hit! Trade closed at {row.name} {open_trade['SL_Price']:.2f}")
+                signal_placeholder.empty()
                 open_trade = None
 
     # Results
