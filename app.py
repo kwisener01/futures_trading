@@ -9,18 +9,19 @@ from streamlit_autorefresh import st_autorefresh
 # --- Streamlit UI ---
 st.set_page_config(page_title="SPY Proxy MES Futures Trading Bot", layout="wide")
 st.title("SPY Proxy MES Futures Trading Bot")
-st.write("Live 1-min trading decisions based on VWAP + Supertrend + Bayesian Forecasting strategy.")
+st.write("Live 1-min trading decisions based on VWAP + Supertrend + Truly Dynamic Bayesian Forecasting.")
 
 # --- Parameters ---
 symbol = st.text_input("Enter Symbol (default SPY):", value="SPY")
 period = st.selectbox("Select period:", ["1d", "5d"], index=0)
 refresh_rate = st.slider("Auto-refresh rate (seconds):", 30, 300, 60)
+sensitivity = st.selectbox("Select Sensitivity:", ["Conservative", "Normal", "Aggressive"], index=1)
 
 # --- Autorefresh every X seconds ---
 st_autorefresh(interval=refresh_rate*1000, key="data_refresh")
 
 # --- Functions ---
-def calculate_bayesian_forecast(df):
+def calculate_bayesian_forecast(df, sensitivity_mode):
     atr_length = 10
     multiplier = 1.25
     df['H-L'] = df['High'] - df['Low']
@@ -46,18 +47,26 @@ def calculate_bayesian_forecast(df):
             df.at[df.index[i], 'Supertrend'] = df['Supertrend'].iloc[i-1]
             df.at[df.index[i], 'Direction'] = df['Direction'].iloc[i-1]
 
+    df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+
     atr14 = df['TR'].rolling(14, min_periods=1).mean()
     atr_ma14 = atr14.rolling(14, min_periods=1).mean()
     vol_fact = atr14 / atr_ma14
     vol_fact.fillna(1, inplace=True)
 
+    trend_strength = abs(df['Close'] - df['Supertrend']) / df['ATR']
+    vwap_slope = df['VWAP'].diff(5)
+    vwap_slope.fillna(0, inplace=True)
+
+    combined_factor = (1/3) * (vol_fact.rank(pct=True) + trend_strength.rank(pct=True) + vwap_slope.abs().rank(pct=True))
+
     min_lb = 10
     max_lb = 60
-    raw_lb = min_lb + (max_lb - min_lb) * (1 - vol_fact)
-    avg_dyn_lb = int(np.clip(raw_lb.mean(), min_lb, max_lb))
+    dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb).astype(int)
 
-    df['Mean'] = df['Close'].rolling(window=avg_dyn_lb, min_periods=1).mean()
-    df['Std'] = df['Close'].rolling(window=avg_dyn_lb, min_periods=1).std()
+    df['Mean'] = df['Close'].rolling(window=dyn_lb, min_periods=1).mean()
+    df['Std'] = df['Close'].rolling(window=dyn_lb, min_periods=1).std()
     df['ZScore'] = (df['Close'] - df['Mean']) / df['Std']
 
     df['Prob_Up'] = norm.cdf(df['ZScore'])
@@ -68,7 +77,12 @@ def calculate_bayesian_forecast(df):
     df['Posterior_Up'] = (prior * df['Prob_Up']) / den
     df['Posterior_Down'] = 1 - df['Posterior_Up']
 
-    posterior_thresh = 0.9
+    if sensitivity_mode == "Conservative":
+        posterior_thresh = 0.95
+    elif sensitivity_mode == "Aggressive":
+        posterior_thresh = 0.85
+    else:
+        posterior_thresh = 0.9
 
     df['Buy_Signal'] = (df['Direction'] == -1) & (df['Posterior_Up'] > posterior_thresh)
     df['Sell_Signal'] = (df['Direction'] == 1) & (df['Posterior_Down'] > posterior_thresh)
@@ -97,10 +111,7 @@ with placeholder.container():
         if 'Volume' in col: rename_map[col] = 'Volume'
     df.rename(columns=rename_map, inplace=True)
 
-    df = calculate_bayesian_forecast(df)
-
-    df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
-    df['VWAP'] = (df['TP'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+    df = calculate_bayesian_forecast(df, sensitivity)
 
     df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
 
