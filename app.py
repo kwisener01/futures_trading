@@ -13,7 +13,7 @@ st.write("Live 1-min trading decisions based on VWAP + Supertrend + Truly Dynami
 
 # --- Parameters ---
 symbol = st.text_input("Enter Symbol (default SPY):", value="SPY")
-period = st.selectbox("Select period:", ["1d", "5d"], index=0)
+period = st.selectbox("Select period:", ["1d", "5d", "1mo", "3mo"], index=0)
 refresh_rate = st.slider("Auto-refresh rate (seconds):", 30, 300, 60)
 sensitivity = st.selectbox("Select Sensitivity:", ["Conservative", "Normal", "Aggressive"], index=1)
 
@@ -159,23 +159,26 @@ with placeholder.container():
     trade_log = []
 
     for i in range(1, len(df)):
+        size_multiplier = df['Posterior_Up'].iloc[i] if df['Final_Signal'].iloc[i] == 1 else df['Posterior_Down'].iloc[i]
+        trade_size = max(1, size_multiplier * 10)
+
         if df['Final_Signal'].iloc[i] == 1 and position == 0:
-            position = 1
+            position = trade_size
             entry_price = df['Close'].iloc[i]
             trade_log.append((df.index[i], 'BUY', entry_price))
         elif df['Final_Signal'].iloc[i] == -1 and position == 0:
-            position = -1
+            position = -trade_size
             entry_price = df['Close'].iloc[i]
             trade_log.append((df.index[i], 'SELL', entry_price))
 
-        if position == 1 and (df['Close'].iloc[i] < df['VWAP'].iloc[i] or i == len(df)-1):
-            pnl = df['Close'].iloc[i] - entry_price
+        if position > 0 and (df['Close'].iloc[i] < df['VWAP'].iloc[i] or df['Posterior_Up'].iloc[i] < 0.5 or i == len(df)-1):
+            pnl = (df['Close'].iloc[i] - entry_price) * abs(position)
             balance += pnl
             profits.append(pnl)
             position = 0
 
-        if position == -1 and (df['Close'].iloc[i] > df['VWAP'].iloc[i] or i == len(df)-1):
-            pnl = entry_price - df['Close'].iloc[i]
+        if position < 0 and (df['Close'].iloc[i] > df['VWAP'].iloc[i] or df['Posterior_Down'].iloc[i] < 0.5 or i == len(df)-1):
+            pnl = (entry_price - df['Close'].iloc[i]) * abs(position)
             balance += pnl
             profits.append(pnl)
             position = 0
