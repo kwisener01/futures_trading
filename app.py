@@ -8,7 +8,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from datetime import datetime, timedelta
 import pytz
-import requests
 
 # --- Set page config ---
 st.set_page_config(page_title="Futures Trading Bot", layout="wide")
@@ -53,39 +52,13 @@ symbol = st.sidebar.text_input("Symbol (e.g., MES=F)", value="MES=F")
 period = st.sidebar.selectbox("Period", options=['5d', '7d', '30d', '90d', '180d'], index=0)
 sensitivity = st.sidebar.select_slider("Sensitivity", options=['aggressive', 'normal', 'conservative'], value='normal')
 live_simulation = st.sidebar.checkbox("Live Simulation Mode", value=False)
-use_alphavantage = st.sidebar.checkbox("Use AlphaVantage Feed", value=False)
-
-# Use secret for API key
-api_key = st.secrets.get("api_keys", {}).get("alphavantage", "")
 
 # --- Main ---
 st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
 
 if st.button("Start Trading Bot"):
     # Fetch Data
-    if use_alphavantage and api_key:
-        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval=1min&apikey={api_key}"
-        response = requests.get(url)
-        data = response.json()
-        ts = data.get("Time Series (1min)", {})
-        df = pd.DataFrame.from_dict(ts, orient='index')
-        df = df.rename(columns={
-            '1. open': 'Open',
-            '2. high': 'High',
-            '3. low': 'Low',
-            '4. close': 'Close',
-            '5. volume': 'Volume'
-        })
-        df = df.astype(float)
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
-        if df.index.tz is None:
-            df.index = df.index.tz_localize('UTC')
-    else:
-        df = yf.download(tickers=symbol, interval="1m", period=period)
-        if df.index.tz is None:
-            df.index = df.index.tz_localize('UTC')
-
+    df = yf.download(tickers=symbol, interval="1m", period=period)
     df = df.tz_convert('US/Eastern')
 
     # Clean Columns
@@ -93,6 +66,7 @@ if st.button("Start Trading Bot"):
         df.columns = ['_'.join(col).strip() for col in df.columns.values]
     df.columns = df.columns.str.replace(' ', '_').str.replace('__', '_')
 
+    # Rename Columns
     rename_map = {}
     for col in df.columns:
         if 'Open' in col: rename_map[col] = 'Open'
@@ -134,20 +108,18 @@ if st.button("Start Trading Bot"):
 
         # Buy Signal
         if (row['ML_Prediction'] == 1) and (open_trade is None):
-            atr = df['ATR'].iloc[i]
-            tp_distance = atr * 1.5
-            sl_distance = atr
             open_trade = {
                 'Entry_Time': row.name,
                 'Entry_Price': row['Close'],
                 'Action': 'BUY',
-                'TP_Price': row['Close'] + tp_distance,
-                'SL_Price': row['Close'] - sl_distance
+                'TP_Price': row['Close'] * 1.002,
+                'SL_Price': row['Close'] * 0.998
             }
             st.toast(f"📈 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
 
         # Manage Open Trade
         if open_trade:
+            # Check TP
             if row['High'] >= open_trade['TP_Price']:
                 pnl = open_trade['TP_Price'] - open_trade['Entry_Price']
                 elapsed = row.name - open_trade['Entry_Time']
@@ -164,6 +136,7 @@ if st.button("Start Trading Bot"):
                 })
                 st.toast(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
                 open_trade = None
+            # Check SL
             elif row['Low'] <= open_trade['SL_Price']:
                 pnl = open_trade['SL_Price'] - open_trade['Entry_Price']
                 elapsed = row.name - open_trade['Entry_Time']
@@ -200,5 +173,6 @@ if st.button("Start Trading Bot"):
     ax.set_title(f"{symbol} Close Price with EMA20")
     st.pyplot(fig)
 
+    # Live Simulation Text
     if live_simulation:
         st.info("Live Simulation Mode Active - Trades will be printed here live when detected.")
