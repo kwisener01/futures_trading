@@ -122,6 +122,7 @@ if st.button("Start Trading Bot"):
             # Check TP
             if row['High'] >= open_trade['TP_Price']:
                 pnl = open_trade['TP_Price'] - open_trade['Entry_Price']
+                elapsed = row.name - open_trade['Entry_Time']
                 balance += pnl
                 trades.append({
                     'Entry_Time': open_trade['Entry_Time'],
@@ -129,13 +130,16 @@ if st.button("Start Trading Bot"):
                     'Entry_Price': open_trade['Entry_Price'],
                     'Exit_Time': row.name,
                     'Exit_Price': open_trade['TP_Price'],
+                    'Elapsed': elapsed,
                     'PnL': pnl,
                     'Exit_Reason': 'TP'
                 })
+                st.warning(f"✅ TP Hit! Trade closed at {row.name} {open_trade['TP_Price']:.2f}")
                 open_trade = None
             # Check SL
             elif row['Low'] <= open_trade['SL_Price']:
                 pnl = open_trade['SL_Price'] - open_trade['Entry_Price']
+                elapsed = row.name - open_trade['Entry_Time']
                 balance += pnl
                 trades.append({
                     'Entry_Time': open_trade['Entry_Time'],
@@ -143,9 +147,11 @@ if st.button("Start Trading Bot"):
                     'Entry_Price': open_trade['Entry_Price'],
                     'Exit_Time': row.name,
                     'Exit_Price': open_trade['SL_Price'],
+                    'Elapsed': elapsed,
                     'PnL': pnl,
                     'Exit_Reason': 'SL'
                 })
+                st.error(f"🚨 SL Hit! Trade closed at {row.name} {open_trade['SL_Price']:.2f}")
                 open_trade = None
 
     # Results
@@ -156,6 +162,7 @@ if st.button("Start Trading Bot"):
 
     if trades:
         trades_df = pd.DataFrame(trades)
+        trades_df['Elapsed'] = trades_df['Elapsed'].apply(lambda x: f"{x.components.minutes}m {x.components.seconds}s")
         st.dataframe(trades_df)
 
     # Plot
