@@ -91,11 +91,7 @@ if st.button("Start Trading Bot"):
     # --- EMA Calculation ---
     df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
 
-    # --- Continue as normal...
-
-
-    # --- EMA Calculation ---
-    df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+   
 
     # --- Trading Signal Rules ---
     df['Signal'] = 0
