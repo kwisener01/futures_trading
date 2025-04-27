@@ -64,11 +64,10 @@ def calculate_bayesian_forecast(df, sensitivity_mode):
     min_lb = 10
     max_lb = 60
     dyn_lb = (min_lb + (max_lb - min_lb) * (1 - combined_factor)).clip(lower=min_lb, upper=max_lb)
+    dyn_lb = dyn_lb.fillna(min_lb).round().astype(int)
 
     mean_list = []
     std_list = []
-    dyn_lb = dyn_lb.fillna(min_lb).round().astype(int)
-
     for i in range(len(df)):
         lb = dyn_lb.iloc[i]
         if i < lb:
@@ -80,7 +79,6 @@ def calculate_bayesian_forecast(df, sensitivity_mode):
 
     df['Mean'] = mean_list
     df['Std'] = std_list
-
     df['ZScore'] = (df['Close'] - df['Mean']) / df['Std']
 
     df['Prob_Up'] = norm.cdf(df['ZScore'])
@@ -138,16 +136,20 @@ with placeholder.container():
     df.dropna(inplace=True)
 
     features = ['Close', 'EMA_20', 'VWAP', 'ATR', 'ZScore']
-    df['Future_Returns'] = df['Close'].shift(-5) - df['Close']
-    df['Target'] = np.where(df['Future_Returns'] > 0, 1, 0)
 
-    X = df[features]
-    y = df['Target']
+    if len(df) > 5:
+        df['Future_Returns'] = df['Close'].shift(-5) - df['Close']
+        df['Target'] = np.where(df['Future_Returns'] > 0, 1, 0)
 
-    model = RandomForestClassifier()
-    model.fit(X[:-5], y[:-5])
+        X = df[features]
+        y = df['Target']
 
-    df['ML_Prediction'] = model.predict(X)
+        model = RandomForestClassifier()
+        model.fit(X[:-5], y[:-5])
+
+        df['ML_Prediction'] = model.predict(X)
+    else:
+        df['ML_Prediction'] = 0
 
     df['Final_Signal'] = df.apply(lambda row: row['Signal'] if (row['Signal']==1 and row['ML_Prediction']==1) or (row['Signal']==-1 and row['ML_Prediction']==0) else 0, axis=1)
 
@@ -165,19 +167,23 @@ with placeholder.container():
         if df['Final_Signal'].iloc[i] == 1 and position == 0:
             position = trade_size
             entry_price = df['Close'].iloc[i]
+            sl = entry_price - df['ATR'].iloc[i]
+            tp = entry_price + df['ATR'].iloc[i] * 1.5
             trade_log.append((df.index[i], 'BUY', entry_price))
         elif df['Final_Signal'].iloc[i] == -1 and position == 0:
             position = -trade_size
             entry_price = df['Close'].iloc[i]
+            sl = entry_price + df['ATR'].iloc[i]
+            tp = entry_price - df['ATR'].iloc[i] * 1.5
             trade_log.append((df.index[i], 'SELL', entry_price))
 
-        if position > 0 and (df['Close'].iloc[i] < df['VWAP'].iloc[i] or df['Posterior_Up'].iloc[i] < 0.5 or i == len(df)-1):
+        if position > 0 and (df['Close'].iloc[i] < sl or df['Close'].iloc[i] > tp or i == len(df)-1):
             pnl = (df['Close'].iloc[i] - entry_price) * abs(position)
             balance += pnl
             profits.append(pnl)
             position = 0
 
-        if position < 0 and (df['Close'].iloc[i] > df['VWAP'].iloc[i] or df['Posterior_Down'].iloc[i] < 0.5 or i == len(df)-1):
+        if position < 0 and (df['Close'].iloc[i] > sl or df['Close'].iloc[i] < tp or i == len(df)-1):
             pnl = (entry_price - df['Close'].iloc[i]) * abs(position)
             balance += pnl
             profits.append(pnl)
