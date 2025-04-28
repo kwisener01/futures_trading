@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 import pytz
 import requests
 from streamlit_autorefresh import st_autorefresh
-import os
 
 # --- Set page config ---
 st.set_page_config(page_title="Futures Trading Bot", layout="wide")
@@ -74,15 +73,11 @@ use_alpaca = st.sidebar.checkbox("Use Alpaca Live Feed", value=False)
 refresh_minutes = st.sidebar.number_input("Refresh Interval (minutes)", min_value=1, max_value=30, value=5)
 
 # --- Main ---
-st.title("\ud83e\uddd1\u200d\ud83d\udcbb Futures Trading Bot (Bayesian Forecast)")
+st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
 
 # --- Bot Execution ---
 def run_bot():
     global symbol, use_alpaca
-
-    data_dir = "data"
-    os.makedirs(data_dir, exist_ok=True)
-    csv_path = os.path.join(data_dir, f"{symbol.replace('=F','')}_live_1m_data.csv")
 
     try:
         if use_alpaca:
@@ -103,10 +98,6 @@ def run_bot():
         if df.index.tz is None:
             df.index = df.index.tz_localize('UTC')
         df = df.tz_convert('US/Eastern')
-
-    if os.path.exists(csv_path) and live_simulation:
-        old_df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
-        df = pd.concat([old_df, df]).drop_duplicates().sort_index()
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = ['_'.join(col).strip() for col in df.columns.values]
@@ -132,6 +123,9 @@ def run_bot():
     else:
         df['ML_Prediction'] = 0
 
+    st.subheader("Live 1-Minute Data View")
+    st.dataframe(df.tail(200))
+
     balance = 10000
     open_trade = None
     trades = []
@@ -147,7 +141,7 @@ def run_bot():
                 'TP_Price': row['Close'] * 1.002,
                 'SL_Price': row['Close'] * 0.998
             }
-            st.toast(f"\ud83d\udcc8 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
+            st.toast(f"📈 BUY Signal at {open_trade['Entry_Time']} {open_trade['Entry_Price']:.2f}")
 
         if open_trade:
             if row['High'] >= open_trade['TP_Price']:
@@ -164,7 +158,7 @@ def run_bot():
                     'PnL': pnl,
                     'Exit_Reason': 'TP'
                 })
-                st.toast(f"\u2705 TP Hit at {row.name} {open_trade['TP_Price']:.2f}")
+                st.toast(f"✅ TP Hit at {row.name} {open_trade['TP_Price']:.2f}")
                 open_trade = None
             elif row['Low'] <= open_trade['SL_Price']:
                 pnl = open_trade['SL_Price'] - open_trade['Entry_Price']
@@ -180,7 +174,7 @@ def run_bot():
                     'PnL': pnl,
                     'Exit_Reason': 'SL'
                 })
-                st.toast(f"\ud83d\udea8 SL Hit at {row.name} {open_trade['SL_Price']:.2f}")
+                st.toast(f"🚨 SL Hit at {row.name} {open_trade['SL_Price']:.2f}")
                 open_trade = None
 
     st.subheader("Results")
@@ -202,18 +196,6 @@ def run_bot():
     ax.legend()
     ax.set_title(f"{symbol} Close Price with EMA20")
     st.pyplot(fig)
-
-    # Save updated data
-    df.to_csv(csv_path)
-    st.caption(f"Live 1-minute data saved: {csv_path}")
-
-    # Download CSV Button
-    st.download_button(
-        label="Download 1-min Live Data",
-        data=df.to_csv().encode('utf-8'),
-        file_name=f"{symbol.replace('=F','')}_live_data.csv",
-        mime='text/csv'
-    )
 
 if st.button("Start Trading Bot") or live_simulation:
     run_bot()
