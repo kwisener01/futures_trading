@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import pytz
 import requests
 from streamlit_autorefresh import st_autorefresh
+import os
 
 # --- Set page config ---
 st.set_page_config(page_title="Futures Trading Bot", layout="wide")
@@ -19,12 +20,7 @@ def fetch_alpaca_data(symbol, start, end, timeframe):
         "APCA-API-KEY-ID": st.secrets["ALPACA"]["API_KEY"],
         "APCA-API-SECRET-KEY": st.secrets["ALPACA"]["SECRET_KEY"],
     }
-    params = {
-        "start": start,
-        "end": end,
-        "timeframe": timeframe,
-        "limit": 10000,
-    }
+    params = {"start": start, "end": end, "timeframe": timeframe, "limit": 10000}
     url = f"{base_url}/{symbol}/bars"
     r = requests.get(url, headers=headers, params=params)
     r.raise_for_status()
@@ -80,6 +76,7 @@ refresh_minutes = st.sidebar.number_input("Refresh Interval (minutes)", min_valu
 # --- Main ---
 st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
 
+# --- Bot Execution ---
 def run_bot():
     global symbol, use_alpaca
     try:
@@ -106,13 +103,7 @@ def run_bot():
         df.columns = ['_'.join(col).strip() for col in df.columns.values]
     df.columns = df.columns.str.replace(' ', '_').str.replace('__', '_')
 
-    rename_map = {}
-    for col in df.columns:
-        if 'Open' in col: rename_map[col] = 'Open'
-        if 'High' in col: rename_map[col] = 'High'
-        if 'Low' in col: rename_map[col] = 'Low'
-        if 'Close' in col: rename_map[col] = 'Close'
-        if 'Volume' in col: rename_map[col] = 'Volume'
+    rename_map = {col: col.split('_')[0] for col in df.columns}
     df.rename(columns=rename_map, inplace=True)
 
     df = calculate_bayesian_forecast(df, sensitivity)
@@ -191,7 +182,10 @@ def run_bot():
     if trades:
         trades_df = pd.DataFrame(trades)
         trades_df['Elapsed'] = trades_df['Elapsed'].apply(lambda x: f"{x.components.minutes}m {x.components.seconds}s")
+        trades_df = trades_df.style.applymap(lambda v: 'color: green;' if isinstance(v, (int, float)) and v > 0 else 'color: red;', subset=['PnL'])
         st.dataframe(trades_df)
+    else:
+        st.info("Waiting for new trades...")
 
     fig, ax = plt.subplots(figsize=(14,6))
     ax.plot(df['Close'], label='Close Price')
@@ -199,6 +193,11 @@ def run_bot():
     ax.legend()
     ax.set_title(f"{symbol} Close Price with EMA20")
     st.pyplot(fig)
+
+    # Save data
+    csv_path = f"/mnt/data/{symbol.replace('=F','')}_live_1m_data.csv"
+    df.to_csv(csv_path)
+    st.caption(f"Live 1-minute data saved: {csv_path}")
 
 if st.button("Start Trading Bot") or live_simulation:
     run_bot()
