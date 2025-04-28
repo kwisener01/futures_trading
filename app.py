@@ -79,6 +79,11 @@ st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
 # --- Bot Execution ---
 def run_bot():
     global symbol, use_alpaca
+
+    data_dir = "data"
+    os.makedirs(data_dir, exist_ok=True)
+    csv_path = os.path.join(data_dir, f"{symbol.replace('=F','')}_live_1m_data.csv")
+
     try:
         if use_alpaca:
             end_date = datetime.utcnow()
@@ -98,6 +103,10 @@ def run_bot():
         if df.index.tz is None:
             df.index = df.index.tz_localize('UTC')
         df = df.tz_convert('US/Eastern')
+
+    if os.path.exists(csv_path) and live_simulation:
+        old_df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
+        df = pd.concat([old_df, df]).drop_duplicates().sort_index()
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = ['_'.join(col).strip() for col in df.columns.values]
@@ -194,8 +203,7 @@ def run_bot():
     ax.set_title(f"{symbol} Close Price with EMA20")
     st.pyplot(fig)
 
-    # Save data
-    csv_path = f"/mnt/data/{symbol.replace('=F','')}_live_1m_data.csv"
+    # Save updated data
     df.to_csv(csv_path)
     st.caption(f"Live 1-minute data saved: {csv_path}")
 
