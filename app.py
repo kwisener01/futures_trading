@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from datetime import datetime, timedelta
 import pytz
 import requests
-import time
+from streamlit_autorefresh import st_autorefresh
 
 # --- Set page config ---
 st.set_page_config(page_title="Futures Trading Bot", layout="wide")
@@ -81,12 +81,22 @@ refresh_minutes = st.sidebar.number_input("Refresh Interval (minutes)", min_valu
 st.title("🧠 Futures Trading Bot (Bayesian Forecast)")
 
 def run_bot():
-    if use_alpaca:
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=int(period.replace('d', '')))
-        df = fetch_alpaca_data(symbol, start_date.isoformat() + 'Z', end_date.isoformat() + 'Z', "1Min")
-        df.index = df.index.tz_localize('UTC').tz_convert('US/Eastern')
-    else:
+    global symbol, use_alpaca
+    try:
+        if use_alpaca:
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=int(period.replace('d', '')))
+            df = fetch_alpaca_data(symbol, start_date.isoformat() + 'Z', end_date.isoformat() + 'Z', "1Min")
+            df.index = df.index.tz_localize('UTC').tz_convert('US/Eastern')
+        else:
+            df = yf.download(tickers=symbol, interval="1m", period=period)
+            if df.index.tz is None:
+                df.index = df.index.tz_localize('UTC')
+            df = df.tz_convert('US/Eastern')
+    except Exception as e:
+        st.error(f"Data fetch failed. Switching to SPY on Yahoo Finance. ({str(e)})")
+        symbol = "SPY"
+        use_alpaca = False
         df = yf.download(tickers=symbol, interval="1m", period=period)
         if df.index.tz is None:
             df.index = df.index.tz_localize('UTC')
@@ -193,5 +203,4 @@ def run_bot():
 if st.button("Start Trading Bot") or live_simulation:
     run_bot()
     if live_simulation:
-        time.sleep(refresh_minutes * 60)
-        st.experimental_rerun()
+        st_autorefresh(interval=refresh_minutes * 60 * 1000, key="live_refresh")
